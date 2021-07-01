@@ -48,7 +48,7 @@ int main() {
     while((instruction = M[pc] | M[pc+1] << 8 | M[pc+2] << 16 | M[pc+3] << 24) != 0x0ff00513){
 //        //cout << hex << pc << '\t';
 //        //cout << instruction << '\t';
-        if(x[15] >= 800000000) exit(0);
+//        if(x[15] >= 800000000) exit(0);
         parsecode(instruction);
         pc+=4;
     }
