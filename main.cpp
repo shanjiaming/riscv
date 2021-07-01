@@ -40,8 +40,8 @@ u32 getbit(u32 code, int high, int low) {
 void parsecode(u32 code);
 
 int main() {
-    //freopen("../basicopt1.data", "r", stdin);
-    //freopen("../sjmout.txt", "w", stdout);
+    freopen("../basicopt1.data", "r", stdin);
+    freopen("../sjmout.txt", "w", stdout);
     load();
     //TODO 解析指令时反序
     u32 instruction;
