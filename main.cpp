@@ -98,7 +98,7 @@ void WB();
 
 
 int main() {
-    freopen("../bulgarian.data", "r", stdin);
+//    freopen("../bulgarian.data", "r", stdin);
 //    freopen("../sjmout.txt", "w", stdout);
     initialize();
     while (true) {
