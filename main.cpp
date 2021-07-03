@@ -3,27 +3,70 @@
 #include <bitset>
 #include <map>
 #include <cassert>
+#include <functional>
 
 using namespace std;
 
 typedef unsigned int u32;
-typedef unsigned char u8;
 
-u8 M[1048576] = {0};
+unsigned char M[1048576] = {0};
 u32 x[32] = {0};
-u32 pc = 0;
-
-void printu32_2(const u32 thenum) {
-    int num = thenum;
-    bool pt[32] = {0};
-    for (int i = 0; i < 32; ++i) {
-        //cout << (num >> (31 - i) & 1);
-    }
-    //cout << endl;
-}
+u32 PC = 0, NPC = 0;
+u32 IR;
 
 
-void load();
+enum Operation {
+    LUI,
+    AUIPC,
+    JAL,
+    JALR,
+    LB,
+    LH,
+    LW,
+    LBU,
+    LHU,
+    ADDI,
+    SLTI,
+    SLTIU,
+    XORI,
+    ORI,
+    ANDI,
+    SLLI,
+    SRLI,
+    SRAI,
+    BEQ,
+    BNE,
+    BLT, BGE,
+    BLTU,
+    BGEU,
+    SB,
+    SH,
+    SW,
+    ADD,
+    SLL,
+    SLT,
+    SLTU,
+    XOR,
+    SRL,
+    OR,
+    AND,
+    SUB,
+    SRA
+};
+
+Operation operation;
+
+u32 opcode;
+u32 rd;
+u32 func3;
+u32 rs1;
+u32 rs2;
+u32 func7;
+u32 imm11_0;
+u32 s_imm11_0;
+u32 imm31_12;
+
+void initialize();
 
 u32 sext(int code, int len) {
     return code << 32 - len >> 32 - len;
@@ -37,28 +80,33 @@ u32 getbit(u32 code, int high, int low) {
     return code >> low << (31 - high + low) >> (31 - high);
 }
 
-void parsecode(u32 code);
+
+
+void IF();
+
+void ID();
+
+void EX();
+
+void MEM();
+
+void WB();
+
 
 int main() {
-//    freopen("../basicopt1.data", "r", stdin);
+//    freopen("../bulgarian.data", "r", stdin);
 //    freopen("../sjmout.txt", "w", stdout);
-    load();
-    //TODO 解析指令时反序
-    u32 instruction;
-    while((instruction = M[pc] | M[pc+1] << 8 | M[pc+2] << 16 | M[pc+3] << 24) != 0x0ff00513){
-//        //cout << hex << pc << '\t';
-//        //cout << instruction << '\t';
-//        if(x[15] >= 800000000) exit(0);
-        parsecode(instruction);
-        pc+=4;
+    initialize();
+    while(1){
+        IF();
+        ID();
+        EX();
     }
-    cout << dec << (x[10] & 0b11111111u) << endl;
 }
 
-void load() {
+void initialize() {
     u32 memptr = 0;
     string input;
-    string input2, input3, input4;
     while (cin >> input) {
         if (input[0] == '@')
             memptr = stol(input.substr(1), 0, 16);
@@ -67,325 +115,120 @@ void load() {
     }
 }
 
-void parsecode(u32 code) {
+void IF() {
+    PC = NPC;
+    IR = M[PC] | M[PC + 1] << 8 | M[PC + 2] << 16 | M[PC + 3] << 24;
+    NPC = PC + 4;
+}
+
+
+void MEM(){}
+
+void WB(){}
+
+void ID() {
+    if (IR == 0x0ff00513) {
+        cout << dec << (x[10] & 0b11111111u) << endl;
+        exit(0);
+    }
     static const map<u32, char> opcodeTypeMap = {{0b0110111u, 'U'},
-                                                 {0b0010111u, 'U'},
+                                                 {0b0010111u, 'u'},
                                                  {0b1101111u, 'J'},
-                                                 {0b1100111u, 'I'},
+                                                 {0b1100111u, 'j'},
                                                  {0b1100011u, 'B'},
                                                  {0b0000011u, 'I'},
                                                  {0b0100011u, 'S'},
-                                                 {0b0010011u, 'I'},
+                                                 {0b0010011u, 'i'},
                                                  {0b0110011u, 'R'},
     };
-    const u32 opcode = code & 0b1111111u;
-    const u32 rd = code >> 7 & 0b11111u;
-    const u32 func3 = code >> 12 & 0b111u;
-    const u32 rs1 = code >> 15 & 0b11111u;
-    const u32 rs2 = code >> 20 & 0b11111u;
-    const u32 &shamt = rs2;
-    const u32 func7 = code >> 25;
-    const u32 imm11_0 = code >> 20;
-    const u32 s_imm11_0 = sext(imm11_0, 12);
-    const u32 imm31_12 = code >> 12;
-//    //cout << "\trd=" << rd << "\trs1=" << rs1  << "\trs2=" << rs2 << "\tx[rd]=" << x[rd] << "\tx[rs1]=" << x[rs1]  << "\tx[rs2]=" << x[rs2] << "\ts_imm11_0=" << s_imm11_0 << "\t";
+    opcode = IR & 0b1111111u;
+    rd = IR >> 7 & 0b11111u;
+    func3 = IR >> 12 & 0b111u;
+    rs1 = IR >> 15 & 0b11111u;
+    rs2 = IR >> 20 & 0b11111u;
+    func7 = IR >> 25;
+    imm11_0 = IR >> 20;
+    s_imm11_0 = sext(imm11_0, 12);
+    imm31_12 = IR >> 12;
     char type = opcodeTypeMap.at(opcode);
     switch (type) {
         case 'U': {
-            switch (opcode) {
-                case 0b0110111u: {//lui
-                    //cout << "lui" << endl;
-                    x[rd] = imm31_12 << 12;//少sext兼容
-                    break;
-                }
-                case 0b0010111u: {//auipc
-                    //cout << "auipc" << endl;
-                    x[rd] = pc + (imm31_12 << 12);//少sext兼容
-                    break;
-                }
-                default: {
-                    cout << "error";
-                    exit(0);
-                }
-            }
+            operation = LUI;
             break;
         }
-        case 'J': {//jal
-            //cout << "jal" << endl;
-            u32 offset = (getbit(imm31_12, 19) | getbit(imm31_12, 18, 9) >> 9 | getbit(imm31_12, 8) << 2 |
-                          getbit(imm31_12, 7, 0) << 11) << 1;
-            if (rd != 0)
-                x[rd] = pc + 4;//注意这个+4,是指下一条指令的地址，这是是执行完语句再改，考虑与流水的关系，等等。
-            pc += sext(offset, 21) - 4;
+        case 'u': {
+            operation = AUIPC;
+            break;
+        }
+        case 'J': {
+            operation = JAL;
+            break;
+        }
+        case 'j': {
+            operation = JALR;
             break;
         }
         case 'I': {
-            switch (opcode) {
-                case 0b1100111u: {//jalr
-                    //cout << "jalr" << endl;
-                    int t = pc + 4;
-                    pc = ((x[rs1] + s_imm11_0) & ~1) - 4;
-                    if (rd != 0)x[rd] = t;
-                    break;
-                }
-                case 0b0000011u: {
-                    int addr = x[rs1] + s_imm11_0;
-                    switch (func3) {
-                        case 0b000u: {//lb
-                            //cout << "lb" << endl;
-                            x[rd] = sext(M[addr], 8);
-                            break;
-                        }
-                        case 0b001u: {//lh
-                            //cout << "lh" << endl;
-                            x[rd] = sext(M[addr] | M[addr + 1] << 8, 16);
-                            break;
-                        }
-                        case 0b010u: {//lw
-                            //cout << "lw" << endl;
-                            x[rd] = M[addr] | M[addr + 1] << 8 | M[addr + 2] << 16 | M[addr + 3] << 24;
-                            break;
-                        }
-                        case 0b100u: {//lbu
-                            //cout << "lbu" << endl;
-                            x[rd] = M[addr];
-                            break;
-                        }
-                        case 0b101u: {//lhu
-                            //cout << "lhu" << endl;
-                            x[rd] = M[addr] | M[addr + 1] << 8;
-                            break;
-                        }
+            static const map<u32, Operation> Ifunc3Map = {{0b000u, LB},
+                                                          {0b001u, LH},
+                                                          {0b010u, LW},
+                                                          {0b100u, LBU},
+                                                          {0b101u, LHU}};
+            operation = Ifunc3Map.at(func3);
+            break;
+        }
 
-
-                        default: {
-                            cout << "error";
-                            exit(0);
-                        }
-                    }
-                    break;
-                }
-                case 0b0010011u: {
-                    switch (func3) {
-                        case 0b000u: {//addi
-                            //cout << "addi" << endl;
-                            x[rd] = x[rs1] + s_imm11_0;
-                            break;
-                        }
-                        case 0b010u: {//slti
-                            //cout << "slti" << endl;
-                            x[rd] = (int(x[rs1]) < int(s_imm11_0));
-                            break;
-                        }
-                        case 0b011u: {//sltiu
-                            //cout << "sltiu" << endl;
-                            x[rd] = (x[rs1] < s_imm11_0);
-                            break;
-                        }
-
-                        case 0b100u: {//xori
-                            //cout << "xori" << endl;
-                            x[rd] = x[rs1] ^ s_imm11_0;
-                            break;
-                        }
-                        case 0b110u: {//ori
-                            //cout << "ori" << endl;
-                            x[rd] = x[rs1] | s_imm11_0;
-                            break;
-                        }
-                        case 0b111u: {//andi
-                            //cout << "andi" << endl;
-                            x[rd] = x[rs1] & s_imm11_0;
-                            break;
-                        }
-                        case 0b001u: {//slli
-                            if (func7 != 0b0000000u) {
-                                cout << "error";
-                                exit(0);
-                            }
-                            //cout << "andi" << endl;
-                            x[rd] = x[rs1] << shamt;
-                            break;
-                        }
-                        case 0b101u: {
-                            switch (func7) {
-                                case 0b0000000u: {//srli
-                                    //cout << "srli" << endl;
-                                    x[rd] = (x[rs1] >> shamt);
-                                    break;
-                                }
-                                case 0b0100000u: {//srai
-                                    //cout << "srai" << endl;
-                                    x[rd] = (int(x[rs1]) >> shamt);
-                                    break;
-                                }
-                                default: {
-                                    cout << "error";
-                                    exit(0);
-                                }
-                            }
-                            break;
-                        }
-
-                        default: {
-                            cout << "error";
-                            exit(0);
-                        }
-                    }
-
-                    break;
-                }
-                default: {
-                    cout << "error";
-                    exit(0);
-                }
-            }
+        case 'i': {
+            static const map<u32, Operation> ifunc3Map = {{0b000u, ADDI},
+                                                          {0b010u, SLTI},
+                                                          {0b011u, SLTIU},
+                                                          {0b100u, XORI},
+                                                          {0b110u, ORI},
+                                                          {0b111u, ANDI},
+                                                          {0b001u, SLLI},
+                                                          {0b101u, SRLI}};
+            operation = ifunc3Map.at(func3);
+            if (func3 == 0b101u && func7 == 0b0100000u) operation = SRAI;
             break;
         }
         case 'B': {
-            u32 s_offset = sext((getbit(func7, 6) << 6 | getbit(rd, 0) << 11 | getbit(func7, 5, 0) << 5 | getbit(rd, 4,1)), 13) - 4;
-            switch (func3) {
-                case 0b000u: {//beq
-                    //cout << "beq" << endl;
-                    if (x[rs1] == x[rs2]) pc += s_offset;
-                    break;
-                }
-                case 0b001u: {//bne
-                    //cout << "bne" << endl;
-                    if (x[rs1] != x[rs2])
-                        pc += s_offset;
-                    break;
-                }
-                case 0b100u: {//blt
-                    //cout << "blt" << endl;
-                    if (int(x[rs1]) < int(x[rs2])) pc += s_offset;
-                    break;
-                }
-                case 0b101u: {//bge
-                    //cout << "bge" << endl;
-                    if (int(x[rs1]) >= int(x[rs2])) pc += s_offset;
-                    break;
-                }
-                case 0b110u: {//bltu
-                    //cout << "bltu" << endl;
-                    if (x[rs1] < x[rs2]) pc += s_offset;
-                    break;
-                }
-                case 0b111u: {//bgeu
-                    //cout << "bgeu" << endl;
-                    if (x[rs1] >= x[rs2]) pc += s_offset;
-
-                    break;
-                }
-                default: {
-                    cout << "error";
-                    exit(0);
-                }
-            }
+            static const map<u32, Operation> Bfunc3Map = {{0b000u, BEQ},
+                                                          {0b001u, BNE},
+                                                          {0b100u, BLT},
+                                                          {0b101u, BGE},
+                                                          {0b110u, BLTU},
+                                                          {0b111u, BGEU}};
+            operation = Bfunc3Map.at(func3);
             break;
         }
         case 'S': {
-            int addr = x[rs1] + sext(func7 << 5 | rd, 12);
-            switch (func3) {
-                case 0b000u: {//sb
-                    //cout << "sb" << endl;
-                    M[addr] = x[rs2];
-                    break;
-                }
-                case 0b001u: {//sh
-                    //cout << "sh" << endl;
-                    M[addr] = x[rs2];
-                    M[addr + 1] = x[rs2] >> 8;
-                    break;
-                }
-                case 0b010u: {//sw
-                    //cout << "sw" << endl;
-                    M[addr] = x[rs2];
-                    M[addr + 1] = x[rs2] >> 8;
-                    M[addr + 2] = x[rs2] >> 16;
-                    M[addr + 3] = x[rs2] >> 24;
-                    break;
-                }
-                default: {
-                    cout << "error";
-                    exit(0);
-                }
-            }
-
+            static const map<u32, Operation> Sfunc3Map = {{0b000u, SB},
+                                                          {0b001u, SH},
+                                                          {0b010u, SW}};
+            operation = Sfunc3Map.at(func3);
             break;
         }
         case 'R': {
             switch (func7) {
                 case 0b0000000u: {
-                    switch (func3) {
-                        case 0b000u: {//add
-                            //cout << "add" << endl;
-                            x[rd] = x[rs1] + x[rs2];
-                            break;
-                        }
-                        case 0b001u: {//sll
-                            //cout << "sll" << endl;
-                            x[rd] = x[rs1] << x[rs2];
-                            break;
-                        }
-                        case 0b010u: {//slt
-                            //cout << "slt" << endl;
-                            x[rd] = (int(x[rs1]) < int(x[rs2]));
-                            break;
-                        }
-                        case 0b011u: {//sltu
-                            //cout << "sltu" << endl;
-                            x[rd] = (x[rs1] < x[rs2]);
-                            break;
-                        }
-                        case 0b100u: {//xor
-                            //cout << "xor" << endl;
-                            x[rd] = x[rs1] ^ x[rs2];
-                            break;
-                        }
-                        case 0b101u: {//srl
-                            //cout << "srl" << endl;
-                            x[rd] = (x[rs1] >> x[rs2]);
-                            break;
-                        }
-                        case 0b110u: {//or
-                            //cout << "or" << endl;
-                            x[rd] = x[rs1] | x[rs2];
-                            break;
-                        }
-                        case 0b111u: {//and
-                            //cout << "and" << endl;
-                            x[rd] = x[rs1] & x[rs2];
-                            break;
-                        }
-                        default: {
-                            cout << "error";
-                            exit(0);
-                        }
-                    }
+                    static const map<u32, Operation> R71func3Map = {{0b000u, ADD},
+                                                                    {0b001u, SLL},
+                                                                    {0b010u, SLT},
+                                                                    {0b011u, SLTU},
+                                                                    {0b100u, XOR},
+                                                                    {0b101u, SRL},
+                                                                    {0b110u, OR}};
+                    operation = R71func3Map.at(func3);
                     break;
                 }
                 case 0b0100000u: {
-                    switch (func3) {
-                        case 0b000u: {//sub
-                            //cout << "sub" << endl;
-                            x[rd] = x[rs1] - x[rs2];
-                            break;
-                        }
-                        case 0b101u: {//sra
-                            //cout << "sra" << endl;
-                            x[rd] = (int(x[rs1]) >> int(x[rs2]));
-                            break;
-                        }
-                        default: {
-                            cout << "error";
-                            exit(0);
-                        }
-                    }
+                    static const map<u32, Operation> R72func3Map = {{0b000u, SUB},
+                                                                    {0b101u, SRA}};
+                    operation = R72func3Map.at(func3);
                     break;
                 }
                 default: {
-                    cout << "error";
+                    //cout << "error";
                     exit(0);
                 }
             }
@@ -393,10 +236,325 @@ void parsecode(u32 code) {
             break;
         }
         default: {
-            cout << "error";
+            //cout << "error";
             exit(0);
         }
     }
+}
+
+//void ID() {
+//    if (IR == 0x0ff00513) {
+//        cout << dec << (x[10] & 0b11111111u) << endl;
+//        exit(0);
+//    }
+//    static const map<u32, char> opcodeTypeMap = {{0b0110111u, 'U'},
+//                                                 {0b0010111u, 'U'},
+//                                                 {0b1101111u, 'J'},
+//                                                 {0b1100111u, 'I'},
+//                                                 {0b1100011u, 'B'},
+//                                                 {0b0000011u, 'I'},
+//                                                 {0b0100011u, 'S'},
+//                                                 {0b0010011u, 'I'},
+//                                                 {0b0110011u, 'R'},
+//    };
+//    opcode = IR & 0b1111111u;
+//    rd = IR >> 7 & 0b11111u;
+//    func3 = IR >> 12 & 0b111u;
+//    rs1 = IR >> 15 & 0b11111u;
+//    rs2 = IR >> 20 & 0b11111u;
+//    func7 = IR >> 25;
+//    imm11_0 = IR >> 20;
+//    s_imm11_0 = sext(imm11_0, 12);
+//    imm31_12 = IR >> 12;
+//    char type = opcodeTypeMap.at(opcode);
+//    switch (type) {
+//        case 'U': {
+//            switch (opcode) {
+//                case 0b0110111u: {//lui
+//                    operation = LUI;
+//                    break;
+//                }
+//                case 0b0010111u: {//auipc
+//                    operation = AUIPC;
+//                    break;
+//                }
+//            }
+//            break;
+//        }
+//        case 'J': {//jal
+//            operation = JAL;
+//            break;
+//        }
+//        case 'I': {
+//            switch (opcode) {
+//                case 0b1100111u: {//jalr
+//                    operation = JALR;
+//                    break;
+//                }
+//                case 0b0000011u: {
+//                    static const map<u32, Operation> Ifunc3Map = {{0b000u, LB},
+//                                                                  {0b001u, LH},
+//                                                                  {0b010u, LW},
+//                                                                  {0b100u, LBU},
+//                                                                  {0b101u, LHU}};
+//                    operation = Ifunc3Map.at(func3);
+//                    break;
+//                }
+//                case 0b0010011u: {
+//                    switch (func3) {
+//                        case 0b000u: {//addi
+//                            operation = ADDI;
+//                            break;
+//                        }
+//                        case 0b010u: {//slti
+//                            operation = SLTI;
+//                            break;
+//                        }
+//                        case 0b011u: {//sltiu
+//                            operation = SLTIU;
+//                            break;
+//                        }
+//
+//                        case 0b100u: {//xori
+//                            operation = XORI;
+//                            break;
+//                        }
+//                        case 0b110u: {//ori
+//                            operation = ORI;
+//                            break;
+//                        }
+//                        case 0b111u: {//andi
+//                            operation = ANDI;
+//                            break;
+//                        }
+//                        case 0b001u: {//slli
+//                            operation = SLLI;
+//                            break;
+//                        }
+//                        case 0b101u: {
+//                            switch (func7) {
+//                                case 0b0000000u: {//srli
+//                                    operation = SRLI;
+//                                    break;
+//                                }
+//                                case 0b0100000u: {//srai
+//                                    operation= SRAI;
+//                                    break;
+//                                }
+//                            }
+//                            break;
+//                        }
+//                    }
+//
+//                    break;
+//                }
+//            }
+//            break;
+//        }
+//        case 'B': {
+//            static const map<u32, Operation> Bfunc3Map = {{0b000u, BEQ},
+//                                                          {0b001u, BNE},
+//                                                          {0b100u, BLT},
+//                                                          {0b101u, BGE},
+//                                                          {0b110u, BLTU},
+//                                                          {0b111u, BGEU}};
+//            operation = Bfunc3Map.at(func3);
+//            break;
+//        }
+//        case 'S': {
+//            static const map<u32, Operation> Sfunc3Map = {{0b000u, SB},
+//                                                          {0b001u, SH},
+//                                                          {0b010u, SW}};
+//            operation = Sfunc3Map.at(func3);
+//            break;
+//        }
+//        case 'R': {
+//            switch (func7) {
+//                case 0b0000000u: {
+//                    static const map<u32, Operation> R71func3Map = {{0b000u, ADD},
+//                                                                    {0b001u, SLL},
+//                                                                    {0b010u, SLT},
+//                                                                    {0b011u, SLTU},
+//                                                                    {0b100u, XOR},
+//                                                                    {0b101u, SRL},
+//                                                                    {0b110u, OR}};
+//                    operation = R71func3Map.at(func3);
+//                    break;
+//                }
+//                case 0b0100000u: {
+//                    static const map<u32, Operation> R72func3Map = {{0b000u, SUB},
+//                                                                    {0b101u, SRA}};
+//                    operation = R72func3Map.at(func3);
+//                    break;
+//                }
+//            }
+//            break;
+//        }
+//    }
+//}
+
+
+void EX(){
+    static const map<Operation, function<void()>> operMap
+            =
+            {
+                    {LUI,   []() { x[rd] = imm31_12 << 12; }},
+                    {AUIPC, []() { x[rd] = PC + (imm31_12 << 12); }},
+                    {JAL,   []() {
+                        u32 offset = (getbit(imm31_12, 19) | getbit(imm31_12, 18, 9) >> 9 | getbit(imm31_12, 8) << 2 |
+                                      getbit(imm31_12, 7, 0) << 11) << 1;
+                        if (rd != 0)
+                            x[rd] = PC + 4;//注意这个+4,是指下一条指令的地址，这是是执行完语句再改，考虑与流水的关系，等等。
+                        NPC += sext(offset, 21) - 4;
+                    }},
+                    {JALR,  []() {
+                        int t = PC + 4;
+                        NPC = ((x[rs1] + s_imm11_0) & ~1);
+                        if (rd != 0)x[rd] = t;
+                    }},
+                    {LB,    []() {
+                        int addr = x[rs1] + s_imm11_0;
+                        x[rd] = sext(M[addr], 8);
+                    }},
+                    {LH,    []() {
+                        int addr = x[rs1] + s_imm11_0;
+                        x[rd] = sext(M[addr] | M[addr + 1] << 8, 16);
+                    }},
+                    {LW,    []() {
+                        int addr = x[rs1] + s_imm11_0;
+                        x[rd] = M[addr] | M[addr + 1] << 8 | M[addr + 2] << 16 | M[addr + 3] << 24;
+
+                    }},
+                    {LBU,   []() {
+                        int addr = x[rs1] + s_imm11_0;
+                        x[rd] = M[addr];
+
+                    }},
+                    {LHU,   []() {
+                        int addr = x[rs1] + s_imm11_0;
+                        x[rd] = M[addr] | M[addr + 1] << 8;
+
+                    }},
+                    {ADDI,  []() {
+                        x[rd] = x[rs1] + s_imm11_0;
+                    }},
+                    {SLTI,  []() {
+                        x[rd] = (int(x[rs1]) < int(s_imm11_0));
+                    }},
+                    {SLTIU, []() {
+                        x[rd] = (x[rs1] < s_imm11_0);
+                    }},
+                    {XORI,  []() {
+                        x[rd] = x[rs1] ^ s_imm11_0;
+                    }},
+                    {ORI,   []() {
+                        x[rd] = x[rs1] | s_imm11_0;
+                    }},
+                    {ANDI,  []() {
+                        x[rd] = x[rs1] & s_imm11_0;
+                    }},
+                    {SLLI,  []() {
+                        x[rd] = x[rs1] << rs2;
+                    }},
+                    {SRLI,  []() {
+                        x[rd] = (x[rs1] >> rs2);
+                    }},
+                    {SRAI,  []() {
+                        x[rd] = (int(x[rs1]) >> rs2);
+                    }},
+                    {BEQ,   []() {
+                        u32 s_offset =
+                                sext((getbit(func7, 6) << 6 | getbit(rd, 0) << 11 | getbit(func7, 5, 0) << 5 |
+                                      getbit(rd, 4, 1)),
+                                     13) - 4;
+                        if (x[rs1] == x[rs2]) NPC += s_offset;
+                    }},
+                    {BNE,   []() {
+                        u32 s_offset =
+                                sext((getbit(func7, 6) << 6 | getbit(rd, 0) << 11 | getbit(func7, 5, 0) << 5 |
+                                      getbit(rd, 4, 1)),
+                                     13) - 4;
+                        if (x[rs1] != x[rs2])
+                            NPC += s_offset;
+                    }},
+                    {BLT,   []() {
+                        u32 s_offset =
+                                sext((getbit(func7, 6) << 6 | getbit(rd, 0) << 11 | getbit(func7, 5, 0) << 5 |
+                                      getbit(rd, 4, 1)),
+                                     13) - 4;
+                        if (int(x[rs1]) < int(x[rs2])) NPC += s_offset;
+
+                    }},
+                    {BGE,   []() {
+                        u32 s_offset =
+                                sext((getbit(func7, 6) << 6 | getbit(rd, 0) << 11 | getbit(func7, 5, 0) << 5 |
+                                      getbit(rd, 4, 1)),
+                                     13) - 4;
+                        if (int(x[rs1]) >= int(x[rs2])) NPC += s_offset;
+                    }},
+                    {BLTU,  []() {
+                        u32 s_offset =
+                                sext((getbit(func7, 6) << 6 | getbit(rd, 0) << 11 | getbit(func7, 5, 0) << 5 |
+                                      getbit(rd, 4, 1)),
+                                     13) - 4;
+                        if (x[rs1] < x[rs2]) NPC += s_offset;
+                    }},
+                    {BGEU,  []() {
+                        u32 s_offset =
+                                sext((getbit(func7, 6) << 6 | getbit(rd, 0) << 11 | getbit(func7, 5, 0) << 5 |
+                                      getbit(rd, 4, 1)),
+                                     13) - 4;
+                        if (x[rs1] >= x[rs2]) NPC += s_offset;
+                    }},
+                    {SB,    []() {
+                        int addr = x[rs1] + sext(func7 << 5 | rd, 12);
+                        M[addr] = x[rs2];
+
+                    }},
+                    {SH,    []() {
+                        int addr = x[rs1] + sext(func7 << 5 | rd, 12);
+                        M[addr] = x[rs2];
+                        M[addr + 1] = x[rs2] >> 8;
+                    }},
+                    {SW,    []() {
+                        int addr = x[rs1] + sext(func7 << 5 | rd, 12);
+                        M[addr] = x[rs2];
+                        M[addr + 1] = x[rs2] >> 8;
+                        M[addr + 2] = x[rs2] >> 16;
+                        M[addr + 3] = x[rs2] >> 24;
+                    }},
+                    {ADD,   []() {
+                        x[rd] = x[rs1] + x[rs2];
+                    }},
+                    {SLL,   []() {
+                        x[rd] = x[rs1] << x[rs2];
+                    }},
+                    {SLT,   []() {
+                        x[rd] = (int(x[rs1]) < int(x[rs2]));
+                    }},
+                    {SLTU,  []() {
+                        x[rd] = (x[rs1] < x[rs2]);
+                    }},
+                    {XOR,   []() {
+                        x[rd] = x[rs1] ^ x[rs2];
+                    }},
+                    {SRL,   []() {
+                        x[rd] = (x[rs1] >> x[rs2]);
+                    }},
+                    {OR,    []() {
+                        x[rd] = x[rs1] | x[rs2];
+                    }},
+                    {AND,   []() {
+                        x[rd] = x[rs1] & x[rs2];
+                    }},
+                    {SUB,   []() {
+                        x[rd] = x[rs1] - x[rs2];
+                    }},
+                    {SRA,   []() {
+                        x[rd] = (int(x[rs1]) >> int(x[rs2]));
+                    }}
+            };
+    operMap.at(operation)();
 }
 
 
