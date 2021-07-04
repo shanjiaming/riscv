@@ -18,6 +18,7 @@ u32 Imm = 0;
 u32 ALUOutput = 0;
 u32 LMD = 0;
 enum Operation {
+    NOOP,
     LUI,
     AUIPC,
     JAL,
@@ -36,11 +37,11 @@ enum Operation {
     SLLI,
     SRLI,
     SRAI,
-    BEQ,
-    BNE,
-    BLT, BGE,
-    BLTU,
-    BGEU,
+//    BEQ,
+//    BNE,
+//    BLT, BGE,
+//    BLTU,
+//    BGEU,
     SB,
     SH,
     SW,
@@ -55,21 +56,11 @@ enum Operation {
     SUB,
     SRA
 };
-enum WBClass {
-    ALUWB, LMDWB, SAVE, NOWB
-};
-Operation operation;
-WBClass wbClass;
+Operation operation = NOOP,
+operation2 = NOOP,
+operation3 = NOOP;
 
-u32 opcode;
-u32 rd;
-u32 func3;
-u32 rs1;
-u32 rs2;
-u32 func7;
-u32 imm11_0;
-u32 s_imm11_0;
-u32 imm31_12;
+u32 rd = 0, rd2 = 0, rd3 = 0;
 
 void initialize();
 
@@ -98,7 +89,7 @@ void WB();
 
 
 int main() {
-//    freopen("../bulgarian.data", "r", stdin);
+    freopen("../bulgarian.data", "r", stdin);
 //    freopen("../sjmout.txt", "w", stdout);
     initialize();
     while (true) {
@@ -109,6 +100,7 @@ int main() {
         WB();
     }
 }
+
 
 void initialize() {
     u32 memptr = 0;
@@ -127,26 +119,25 @@ void IF() {
     NPC = PC + 4;
 }
 
-
 void ID() {
     if (IR == 0x0ff00513) {
         cout << dec << (x[10] & 0b11111111u) << endl;
         exit(0);
     }
+    if (IR == 0) {
+        operation = NOOP;
+        return;
+    }
 
-    opcode = IR & 0b1111111u;
+    u32 opcode = IR & 0b1111111u;
     rd = IR >> 7 & 0b11111u;
-    func3 = IR >> 12 & 0b111u;
-    rs1 = IR >> 15 & 0b11111u;
-    rs2 = IR >> 20 & 0b11111u;
-    func7 = IR >> 25;
-    imm11_0 = IR >> 20;
-    s_imm11_0 = sext(IR >> 20, 12);
-    imm31_12 = IR >> 12;
+    u32 func3 = IR >> 12 & 0b111u;
+    u32 rs1 = IR >> 15 & 0b11111u;
+    u32 rs2 = IR >> 20 & 0b11111u;
+    u32 func7 = IR >> 25;
 
     A = x[rs1];
     B = x[rs2];
-    wbClass = ALUWB;
 
     switch (opcode) {
         case 0b0110111u:
@@ -157,16 +148,20 @@ void ID() {
             operation = AUIPC;
             Imm = IR >> 12 << 12;
             break;
-        case 0b1101111u:
+        case 0b1101111u: {
             operation = JAL;
-            Imm = sext((getbit(imm31_12, 19) | getbit(imm31_12, 18, 9) >> 9 | getbit(imm31_12, 8) << 2 |
-                        getbit(imm31_12, 7, 0) << 11) << 1, 21);
-            if (rd == 0) wbClass = NOWB;
+            u32 imm31_12 = IR >> 12;
+            if (rd != 0)
+                ALUOutput = PC + 4;//注意这个+4,是指下一条指令的地址，这是是执行完语句再改，考虑与流水的关系，等等。
+            NPC += sext((getbit(imm31_12, 19) | getbit(imm31_12, 18, 9) >> 9 | getbit(imm31_12, 8) << 2 |
+                        getbit(imm31_12, 7, 0) << 11) << 1, 21) - 4;
             break;
+        }
         case 0b1100111u:
             operation = JALR;
-            Imm = sext(IR >> 20, 12);
-            if (rd == 0) wbClass = NOWB;
+            if (rd != 0)
+                ALUOutput = PC + 4;
+            NPC = ((A + sext(IR >> 20, 12)) & ~1);
             break;
         case 0b0000011u:
             static const map<u32, Operation> Ifunc3Map = {{0b000u, LB},
@@ -176,7 +171,6 @@ void ID() {
                                                           {0b101u, LHU}};
             operation = Ifunc3Map.at(func3);
             Imm = sext(IR >> 20, 12);
-            wbClass = LMDWB;
             break;
         case 0b0010011u:
             static const map<u32, Operation> ifunc3Map = {{0b000u, ADDI},
@@ -190,18 +184,22 @@ void ID() {
             operation = ifunc3Map.at(func3);
             if (func3 == 0b101u && func7 == 0b0100000u) operation = SRAI;
             Imm = (operation == SLLI || operation == SRLI || operation == SRAI) ? rs2 : sext(IR >> 20, 12);
-
             break;
 
         case 0b1100011u:
-            static const map<u32, Operation> Bfunc3Map = {{0b000u, BEQ},
-                                                          {0b001u, BNE},
-                                                          {0b100u, BLT},
-                                                          {0b101u, BGE},
-                                                          {0b110u, BLTU},
-                                                          {0b111u, BGEU}};
-            operation = Bfunc3Map.at(func3);
-            wbClass = NOWB;
+
+            static const map<u32, function<bool(u32,u32)>> Bfunc3Map =
+                    {
+                            {0b000u, [](u32 a, u32 b){return a==b;}},
+                            {0b001u, [](u32 a, u32 b){return a!=b;}},
+                            {0b100u, [](u32 a, u32 b){return int(a)<int(b);}},
+                            {0b101u, [](u32 a, u32 b){return int(a)>=int(b);}},
+                            {0b110u, [](u32 a, u32 b){return a<b;}},
+                            {0b111u, [](u32 a, u32 b){return a>=b;}}};
+            if (Bfunc3Map.at(func3)(A, B))NPC += sext((getbit(func7, 6) << 6 | getbit(rd, 0) << 11 | getbit(func7, 5, 0) << 5 |
+                              getbit(rd, 4, 1)),
+                             13) - 4;
+            operation = NOOP;
             break;
 
         case 0b0100011u:
@@ -209,7 +207,7 @@ void ID() {
                                                           {0b001u, SH},
                                                           {0b010u, SW}};
             operation = Sfunc3Map.at(func3);
-            wbClass = SAVE;
+            Imm = func7;
             break;
 
         case 0b0110011u:
@@ -233,149 +231,117 @@ void ID() {
 
             }
             break;
-
     }
 }
 
-
 void EX() {
-    static const map<Operation, function<void()>> operMap
-            =
-            {
-                    {LUI,   []() { ALUOutput = Imm; }},
-                    {AUIPC, []() { ALUOutput = PC + Imm; }},
-                    {JAL,   []() {
-                        if (wbClass == ALUWB)
-                            ALUOutput = PC + 4;//注意这个+4,是指下一条指令的地址，这是是执行完语句再改，考虑与流水的关系，等等。
-                        NPC += Imm - 4;
-                    }},
-                    {JALR,  []() {
-                        int t = PC + 4;
-                        NPC = ((A + Imm) & ~1);
-                        if (wbClass == ALUWB)ALUOutput = t;
-                    }},
-                    {LB,    []() {
-                        ALUOutput = A + Imm;
-                    }},
-                    {LH,    []() {
-                        ALUOutput = A + Imm;
-                    }},
-                    {LW,    []() {
-                        ALUOutput = A + Imm;
+    switch (operation) {
+        case LUI: {
+            ALUOutput = Imm;
+            break;
+        }
+        case AUIPC: {
+            ALUOutput = PC + Imm;
+            break;
+        }
 
-                    }},
-                    {LBU,   []() {
-                        ALUOutput = A + Imm;
-
-                    }},
-                    {LHU,   []() {
-                        ALUOutput = A + Imm;
-
-                    }},
-                    {ADDI,  []() {
-                        ALUOutput = A + Imm;
-                    }},
-                    {SLTI,  []() {
-                        ALUOutput = (int(A) < int(Imm));
-                    }},
-                    {SLTIU, []() {
-                        ALUOutput = (A < Imm);
-                    }},
-                    {XORI,  []() {
-                        ALUOutput = A ^ Imm;
-                    }},
-                    {ORI,   []() {
-                        ALUOutput = A | Imm;
-                    }},
-                    {ANDI,  []() {
-                        ALUOutput = A & Imm;
-                    }},
-                    {SLLI,  []() {
-                        ALUOutput = A << Imm;
-                    }},
-                    {SRLI,  []() {
-                        ALUOutput = (A >> Imm);
-                    }},
-                    {SRAI,  []() {
-                        ALUOutput = (int(A) >> Imm);
-                    }},
-                    {BEQ,   []() {
-                        ALUOutput = sext((getbit(func7, 6) << 6 | getbit(rd, 0) << 11 | getbit(func7, 5, 0) << 5 |
-                                          getbit(rd, 4, 1)),
-                                         13) - 4;
-                    }},
-                    {BNE,   []() {
-                        ALUOutput = sext((getbit(func7, 6) << 6 | getbit(rd, 0) << 11 | getbit(func7, 5, 0) << 5 |
-                                          getbit(rd, 4, 1)),
-                                         13) - 4;
-                    }},
-                    {BLT,   []() {
-                        ALUOutput = sext((getbit(func7, 6) << 6 | getbit(rd, 0) << 11 | getbit(func7, 5, 0) << 5 |
-                                          getbit(rd, 4, 1)),
-                                         13) - 4;
-
-                    }},
-                    {BGE,   []() {
-                        ALUOutput = sext((getbit(func7, 6) << 6 | getbit(rd, 0) << 11 | getbit(func7, 5, 0) << 5 |
-                                          getbit(rd, 4, 1)),
-                                         13) - 4;
-                    }},
-                    {BLTU,  []() {
-                        ALUOutput = sext((getbit(func7, 6) << 6 | getbit(rd, 0) << 11 | getbit(func7, 5, 0) << 5 |
-                                          getbit(rd, 4, 1)),
-                                         13) - 4;
-                    }},
-                    {BGEU,  []() {
-                        ALUOutput = sext((getbit(func7, 6) << 6 | getbit(rd, 0) << 11 | getbit(func7, 5, 0) << 5 |
-                                          getbit(rd, 4, 1)),
-                                         13) - 4;
-                    }},
-                    {SB,    []() {
-                        ALUOutput = A + sext(func7 << 5 | rd, 12);
-                    }},
-                    {SH,    []() {
-                        ALUOutput = A + sext(func7 << 5 | rd, 12);
-                    }},
-                    {SW,    []() {
-                        ALUOutput = A + sext(func7 << 5 | rd, 12);
-                    }},
-                    {ADD,   []() {
-                        ALUOutput = A + B;
-                    }},
-                    {SLL,   []() {
-                        ALUOutput = A << B;
-                    }},
-                    {SLT,   []() {
-                        ALUOutput = (int(A) < int(B));
-                    }},
-                    {SLTU,  []() {
-                        ALUOutput = (A < B);
-                    }},
-                    {XOR,   []() {
-                        ALUOutput = A ^ B;
-                    }},
-                    {SRL,   []() {
-                        ALUOutput = (A >> B);
-                    }},
-                    {OR,    []() {
-                        ALUOutput = A | B;
-                    }},
-                    {AND,   []() {
-                        ALUOutput = A & B;
-                    }},
-                    {SUB,   []() {
-                        ALUOutput = A - B;
-                    }},
-                    {SRA,   []() {
-                        ALUOutput = (int(A) >> int(B));
-                    }}
-            };
-    operMap.at(operation)();
+        case LB:
+        case LH:
+        case LW:
+        case LBU:
+        case LHU: {
+            ALUOutput = A + Imm;
+            break;
+        }
+        case ADDI: {
+            ALUOutput = A + Imm;
+            break;
+        }
+        case SLTI: {
+            ALUOutput = (int(A) < int(Imm));
+            break;
+        }
+        case SLTIU: {
+            ALUOutput = (A < Imm);
+            break;
+        }
+        case XORI: {
+            ALUOutput = A ^ Imm;
+            break;
+        }
+        case ORI: {
+            ALUOutput = A | Imm;
+            break;
+        }
+        case ANDI: {
+            ALUOutput = A & Imm;
+            break;
+        }
+        case SLLI: {
+            ALUOutput = A << Imm;
+            break;
+        }
+        case SRLI: {
+            ALUOutput = (A >> Imm);
+            break;
+        }
+        case SRAI: {
+            ALUOutput = (int(A) >> Imm);
+            break;
+        }
+        case SB:
+        case SH:
+        case SW: {
+            ALUOutput = A + sext(Imm << 5 | rd, 12);
+            break;
+        }
+        case ADD: {
+            ALUOutput = A + B;
+            break;
+        }
+        case SLL: {
+            ALUOutput = A << B;
+            break;
+        }
+        case SLT: {
+            ALUOutput = (int(A) < int(B));
+            break;
+        }
+        case SLTU: {
+            ALUOutput = (A < B);
+            break;
+        }
+        case XOR: {
+            ALUOutput = A ^ B;
+            break;
+        }
+        case SRL: {
+            ALUOutput = (A >> B);
+            break;
+        }
+        case OR: {
+            ALUOutput = A | B;
+            break;
+        }
+        case AND: {
+            ALUOutput = A & B;
+            break;
+        }
+        case SUB: {
+            ALUOutput = A - B;
+            break;
+        }
+        case SRA: {
+            ALUOutput = (int(A) >> int(B));
+            break;
+        }
+    }
+    operation2 = operation;
+    rd2 = rd;
 }
 
-
 void MEM() {
-    switch (operation) {
+    switch (operation2) {
         case LB:
             LMD = sext(M[ALUOutput], 8);
             break;
@@ -404,34 +370,45 @@ void MEM() {
             M[ALUOutput + 2] = B >> 16;
             M[ALUOutput + 3] = B >> 24;
             break;
-        case BEQ:
-            if (A == B) NPC += ALUOutput;
-            break;
-        case BNE:
-            if (A != B) NPC += ALUOutput;
-            break;
-        case BLT:
-            if (int(A) < int(B)) NPC += ALUOutput;
-            break;
-        case BGE:
-            if (int(A) >= int(B)) NPC += ALUOutput;
-            break;
-        case BLTU:
-            if (A < B) NPC += ALUOutput;
-            break;
-        case BGEU:
-            if (A >= B) NPC += ALUOutput;
-            break;
+
     }
+    operation3 = operation2;
+    rd3 = rd2;
 }
 
 void WB() {
-    switch (wbClass) {
-        case ALUWB:
-            x[rd] = ALUOutput;
+    switch (operation3) {
+        case JAL:
+        case JALR:
+            if (rd == 0) return;
+        case LUI:
+        case AUIPC:
+        case ADDI:
+        case SLTI:
+        case SLTIU:
+        case XORI:
+        case ORI:
+        case ANDI:
+        case SLLI:
+        case SRLI:
+        case SRAI:
+        case ADD:
+        case SLL:
+        case SLT:
+        case SLTU:
+        case XOR:
+        case SRL:
+        case OR:
+        case SUB:
+        case SRA:
+            x[rd3] = ALUOutput;
             break;
-        case LMDWB:
-            x[rd] = LMD;
+        case LB:
+        case LH:
+        case LW:
+        case LBU:
+        case LHU:
+            x[rd3] = LMD;
             break;
     }
 }
