@@ -290,6 +290,7 @@ void WB();
 int main() {
 //    freopen("../bulgarian.data", "r", stdin);
 //    freopen("../sjmout.txt", "w", stdout);
+//passed ver!
     initialize();
     IF();
     while (true) {
